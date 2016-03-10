@@ -21,21 +21,19 @@ final class BCModel {
    private var arrayOfLocations = [CLLocation]()
    private let queue : dispatch_queue_t = dispatch_queue_create("uk.ac.plmouth.bc", DISPATCH_QUEUE_SERIAL)
    private let archiveKey = "LocationArray"
-   private var _isEmpty : Bool = true
    
    // MARK: Life-cycle
    
+    //The constructor is private, so it cannot be instantiated anywhere else
    private init() {
       //Phase 1 has nothing to do
       
       //Call superclass if you subclass
 //      super.init()
       
-      //Phase 2 - super is now available
+      //Phase 2 - self is now available
       if let m = NSKeyedUnarchiver.unarchiveObjectWithFile(self.archivePath) as? [CLLocation] {
          arrayOfLocations = m
-      } else {
-         arrayOfLocations = [CLLocation]()
       }
    }
    
@@ -58,7 +56,7 @@ final class BCModel {
          //Persist data to file
          NSKeyedArchiver.archiveRootObject(self.arrayOfLocations, toFile:self.archivePath)
          //Call back on main thread (posted to main runloop)
-         dispatch_async(dispatch_get_main_queue(), done)
+         dispatch_sync(dispatch_get_main_queue(), done)
       }
    }
    
@@ -66,9 +64,8 @@ final class BCModel {
    func erase(done done : ()->() ) {
       dispatch_async(queue) {
          self.arrayOfLocations.removeAll()
-         self._isEmpty = true
          //Call back on main thread (posted to main runloop)
-         dispatch_async(dispatch_get_main_queue(), done)
+         dispatch_sync(dispatch_get_main_queue(), done)
       }
    }
    
@@ -76,9 +73,8 @@ final class BCModel {
    func addRecord(record : CLLocation, done : ()->() ) {
       dispatch_async(queue){
          self.arrayOfLocations.append(record)
-         self._isEmpty = false
          //Call back on main thread (posted to main runloop)
-         dispatch_async(dispatch_get_main_queue(), done)
+         dispatch_sync(dispatch_get_main_queue(), done)
       }
    }
    
@@ -88,9 +84,8 @@ final class BCModel {
          for r in records {
             self.arrayOfLocations.append(r)
          }
-         self._isEmpty = false
          //Call back on main thread (posted to main runloop)
-         dispatch_async(dispatch_get_main_queue(), done)
+         dispatch_sync(dispatch_get_main_queue(), done)
       }
    }
    
@@ -100,21 +95,21 @@ final class BCModel {
       dispatch_async(queue){
          //Call back on main thread (posted to main runloop)
          copyOfArray = self.arrayOfLocations
-         dispatch_async(dispatch_get_main_queue(), { done(array: copyOfArray) })
+         dispatch_sync(dispatch_get_main_queue(), { done(array: copyOfArray) })
       }
    }
    
    /// Query if the container is empty
    func isEmpty(done done : (isEmpty : Bool) -> () ) {
-      var result : Bool!
       dispatch_async(queue) {
-         result = self._isEmpty
-         dispatch_async(dispatch_get_main_queue(), { done(isEmpty: result) })
+        let result = self.arrayOfLocations.count == 0 ? true : false
+         dispatch_sync(dispatch_get_main_queue(), { done(isEmpty: result) })
       }
    }
    
-   /// CLOUDKIT (very basic, assumes non-failure)
-   
+    
+    // MARK: Cloud Kit
+    
    /// Upload the array of data to CloudKit
    func uploadToCloudKit(done : (didSucceed : Bool)->() ) {
       //Fetch a copy of the array
@@ -157,6 +152,5 @@ final class BCModel {
          done(didSucceed: true)
       }
    }
-   
    
 }

@@ -88,7 +88,7 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
     }
 
     ///This property is "lazy". Only runs once, when the property is first referenced
-    lazy var locationManager : CLLocationManager = {
+    private lazy var locationManager : CLLocationManager = {
       [unowned self] in
       print("Instantiating and initialising the location manager \"lazily\"")
       print("This will only run once")
@@ -109,14 +109,11 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
 
     //Internal flag for deferred updates
     var deferringUpdates : Bool = false
-
-    //Array of GPS locations
-    var _arrayOfLocations = [CLLocation]()
    
     // ************************
     // MARK: Class Initialisers
     // ************************
-
+    
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: NSBundle?) {
       print("\(__FILE__), \(__FUNCTION__)")
       super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -161,7 +158,14 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
       super.viewDidAppear(animated)
       print("\(__FILE__), \(__FUNCTION__)")
     }
+    
     // MARK: Updates to layout
+    
+    override func willTransitionToTraitCollection(newCollection: UITraitCollection, withTransitionCoordinator coordinator: UIViewControllerTransitionCoordinator) {
+        //Forward the message to presented / child view controllers
+        super.willTransitionToTraitCollection(newCollection, withTransitionCoordinator: coordinator)
+        print("\(__FILE__), \(__FUNCTION__) : new traits \(newCollection)")
+    }
     override func viewWillLayoutSubviews() {
       super.viewWillLayoutSubviews()
       print("\(__FILE__), \(__FUNCTION__)")
@@ -193,7 +197,7 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
       // Dispose of any resources that can be recreated.
       print("\(__FILE__), \(__FUNCTION__)")
    }
-   
+    
    func locationManager(manager: CLLocationManager, didChangeAuthorizationStatus status: CLAuthorizationStatus) {
       print("Authorisation changed to \(status.rawValue)")
       if status == CLAuthorizationStatus.AuthorizedAlways {
@@ -223,10 +227,12 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
    
    @IBAction func doClear(sender: AnyObject) {
       globalModel.erase() {
-         globalModel.deleteDataFromCloudKit() { (didSucceed : Bool) in
-            print("Data delete \(didSucceed)")
-         }
-         self.updateStateWithInput(.None)
+        globalModel.save() {
+            self.updateStateWithInput(.None)
+            globalModel.deleteDataFromCloudKit() { (didSucceed : Bool) in
+                print("Data delete \(didSucceed)")
+            }
+        }
       }
    }
    
@@ -249,34 +255,25 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
    
    func dismissWithUpdatedOptions(updatedOptions: BCOptions?) {
       print("\(__FILE__), \(__FUNCTION__)")
-      //If saved, updatedOptions will have a wrapped copy
-      if let op = updatedOptions {
-         self.options = op             //Make copy
-
-         //Update the application UI and Location manager
-         updateOutputWithState()
-      }
-      
+    
       //Using a trailing closure syntax, dismiss the presented and run completion handler
       self.dismissViewControllerAnimated(true) {
          print("Presented animation has now completed")
+        
+        //If saved, updatedOptions will have a wrapped copy
+        if let op = updatedOptions {
+            self.options = op             //Make copy
+            
+            //Update the application UI and Location manager
+            dispatch_async(dispatch_get_main_queue()) {
+                self.updateOutputWithState()
+            }
+        }
+        
       }
    }
    
-   // ************************
-   // MARK: Update Map Overlay
-   // ************************
-   func updateMapOverlay() {
-      globalModel.getArray() { (array : [CLLocation]) in
-         self._arrayOfLocations = array
-         
-         //Update overlay of the journey
-         var arrayOfCoords : [CLLocationCoordinate2D] = self._arrayOfLocations.map{$0.coordinate}  //Array of coordinates
-         let line = MKPolyline(coordinates: &arrayOfCoords, count: arrayOfCoords.count)
-         self.mapView.removeOverlays(self.mapView.overlays) //Remove previous line
-         self.mapView.addOverlay(line)                      //Add updated
-      }
-   }
+
    
    
    // *******************************
@@ -288,9 +285,9 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
    }
    
    func locationManager(manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-      guard let location = locations.last else { return }
+      guard let _ = locations.last else { return }
       
-      print("\(locations.count) Location(s) Updated: \(location)")
+      print("\(locations.count) Location(s) Updated.")
 
       //Store in array
       globalModel.addRecords(locations) {
@@ -311,6 +308,20 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
       self.deferringUpdates = false
    }
   
+    // ************************
+    // MARK: Update Map Overlay
+    // ************************
+    func updateMapOverlay() {
+        globalModel.getArray() { (array : [CLLocation]) in
+            
+            //Update overlay of the journey
+            var arrayOfCoords : [CLLocationCoordinate2D] = array.map{$0.coordinate}  //Array of coordinates
+            let line = MKPolyline(coordinates: &arrayOfCoords, count: arrayOfCoords.count)
+            self.mapView.removeOverlays(self.mapView.overlays) //Remove previous line
+            self.mapView.addOverlay(line)                      //Add updated
+        }
+    }
+    
    // ***********************
    // MARK: MKMapViewDelegate
    // ***********************
@@ -433,6 +444,7 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
          locationManager.distanceFilter = self.options.distanceBetweenMeasurements
          locationManager.allowsBackgroundLocationUpdates = false
          locationManager.stopUpdatingLocation()
+         locationManager.stopUpdatingHeading()
          
       case .LiveMapLogging:
          //Buttons
@@ -463,6 +475,6 @@ class BCCurrentPositionViewController: UIViewController, CLLocationManagerDelega
 
       } //end switch
    }
-   
+    
 }
 
